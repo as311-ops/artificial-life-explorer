@@ -1,4 +1,6 @@
 import argparse
+import json
+import time
 from pathlib import Path
 
 import numpy as np
@@ -203,13 +205,24 @@ def opcode_token_percent(programs: np.ndarray) -> float:
     return 100.0 * float(counts[OPCODE_TOKENS].sum()) / float(programs.size)
 
 
+def shannon_entropy(programs: np.ndarray) -> float:
+    counts = np.bincount(programs.ravel(), minlength=256).astype(np.float64)
+    total = counts.sum()
+    probs = counts[counts > 0] / total
+    return float(-np.sum(probs * np.log2(probs)))
+
+
 def run_epochs(
     programs: np.ndarray,
     nepochs: int,
     mutation_rate: float,
     rng: np.random.Generator,
     gif_every: int,
-) -> list[Image.Image]:
+    render_gif: bool = True,
+    metrics_path: str | None = None,
+    metrics_every: int = 10,
+    replicator_threshold: float = 5.0,
+) -> tuple[list[Image.Image], dict]:
     grid_width, grid_height, tape_size = programs.shape
     num_programs = grid_width * grid_height
     flat_programs = programs.reshape(num_programs, tape_size)
@@ -223,6 +236,9 @@ def run_epochs(
     taken = np.empty(num_programs, dtype=np.uint8)
     frames: list[Image.Image] = []
     color_lut = build_color_lut()
+    metrics_history: list[dict] = []
+    replicator_epoch: int | None = None
+    start_time = time.monotonic()
 
     pbar = tqdm(range(nepochs))
     for epoch in pbar:
@@ -238,15 +254,40 @@ def run_epochs(
         pair_count = select_pairs(order, proposals, pairs, taken)
         run_epoch_pairs(flat_programs, pairs, pair_count)
         apply_background_mutation(programs, mutation_rate, rng)
-        if color_lut is not None and (
+        opcode_pct = opcode_token_percent(programs)
+        elapsed = time.monotonic() - start_time
+        if replicator_epoch is None and opcode_pct >= replicator_threshold:
+            replicator_epoch = epoch
+        if metrics_path is not None and (epoch % metrics_every == 0 or epoch + 1 == nepochs):
+            entropy = shannon_entropy(programs)
+            metrics_history.append({
+                "epoch": epoch,
+                "opcode_percent": round(opcode_pct, 4),
+                "shannon_entropy": round(entropy, 4),
+                "elapsed_seconds": round(elapsed, 2),
+            })
+        if render_gif and color_lut is not None and (
             (epoch + 1) % gif_every == 0 or epoch + 1 == nepochs or epoch == 0
         ):
             frames.append(
                 Image.fromarray(render_program_frame(programs, color_lut), mode="RGB")
             )
-        pbar.set_postfix_str(f"opcode={opcode_token_percent(programs):.2f}%")
+        pbar.set_postfix_str(f"opcode={opcode_pct:.2f}%")
 
-    return frames
+    summary = {
+        "total_epochs_run": nepochs,
+        "replicator_epoch": replicator_epoch,
+        "replicator_threshold_used": replicator_threshold,
+        "final_opcode_percent": metrics_history[-1]["opcode_percent"] if metrics_history else None,
+        "final_shannon_entropy": metrics_history[-1]["shannon_entropy"] if metrics_history else None,
+        "total_elapsed_seconds": round(time.monotonic() - start_time, 2),
+        "history": metrics_history,
+    }
+    if metrics_path is not None:
+        path = Path(metrics_path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(summary, indent=2))
+    return frames, summary
 
 
 if __name__ == "__main__":
@@ -269,6 +310,10 @@ if __name__ == "__main__":
     )
     parser.add_argument("--gif-every", type=int, default=20)
     parser.add_argument("--gif-fps", type=int, default=20)
+    parser.add_argument("--metrics-path", type=str, default=None)
+    parser.add_argument("--metrics-every", type=int, default=10)
+    parser.add_argument("--replicator-threshold", type=float, default=5.0)
+    parser.add_argument("--no-gif", action="store_true", default=False)
     args = parser.parse_args()
 
     if args.grid_width * args.grid_height != args.num_programs:
@@ -277,7 +322,7 @@ if __name__ == "__main__":
         raise ValueError("--gif-every must be > 0")
     if args.gif_fps <= 0:
         raise ValueError("--gif-fps must be > 0")
-    if args.tape_size != 64:
+    if not args.no_gif and args.tape_size != 64:
         raise ValueError("--tape-size must be 64 to render each tape as an 8x8 grid")
 
     rng = np.random.default_rng(args.seed)
@@ -285,12 +330,21 @@ if __name__ == "__main__":
         0, 256, size=(args.grid_width, args.grid_height, args.tape_size), dtype=np.uint8
     )
 
-    frames = run_epochs(
+    frames, summary = run_epochs(
         programs,
         args.num_epochs,
         args.mutation_rate,
         rng,
         gif_every=args.gif_every,
+        render_gif=not args.no_gif,
+        metrics_path=args.metrics_path,
+        metrics_every=args.metrics_every,
+        replicator_threshold=args.replicator_threshold,
     )
-    save_evolution_gif(frames, args.gif_path, args.gif_fps)
-    print(f"wrote GIF: {Path(args.gif_path).resolve()}")
+    if not args.no_gif:
+        save_evolution_gif(frames, args.gif_path, args.gif_fps)
+        print(f"wrote GIF: {Path(args.gif_path).resolve()}")
+    if args.metrics_path:
+        print(f"wrote metrics: {Path(args.metrics_path).resolve()}")
+    if summary["replicator_epoch"] is not None:
+        print(f"replicator emerged at epoch {summary['replicator_epoch']}")

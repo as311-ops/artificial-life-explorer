@@ -8,3 +8,16 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Secrets
+.env
+
+# Large generated media files
+*.gif
+*.mp4
+
+# Auto-generated researcher state
+research_state.json
+research_journal.md
+.researcher_metrics/
+.researcher_backups/
