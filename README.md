@@ -20,7 +20,7 @@ Run a simulation yourself:
 uv run main.py --seed 1
 ```
 
-This produces `universe.gif` — a self-replicating pattern emerges early and spreads across the grid, until an even more efficient replicator evolves and takes over completely.
+This produces `universe_mutation.gif` — a self-replicating pattern emerges early and spreads across the grid, until an even more efficient replicator evolves and takes over completely.
 
 ## Features
 
@@ -43,7 +43,7 @@ uv sync
 ## Usage
 
 ```bash
-# Basic run (7500 epochs, saves universe.gif)
+# Basic run (7500 epochs, saves universe_mutation.gif)
 uv run main.py --seed 1
 
 # Faster run without GIF rendering

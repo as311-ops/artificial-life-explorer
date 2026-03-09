@@ -301,7 +301,7 @@ if __name__ == "__main__":
     parser.add_argument("--num-programs", type=int, default=32_400)
     parser.add_argument("--grid-width", type=int, default=240)
     parser.add_argument("--grid-height", type=int, default=135)
-    parser.add_argument("--gif-path", type=str, default="universe.gif")
+    parser.add_argument("--gif-path", type=str, default="universe_mutation.gif")
     parser.add_argument(
         "--mp4-path",
         type=str,
