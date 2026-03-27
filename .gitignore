@@ -21,3 +21,8 @@ research_state.json
 research_journal.md
 .researcher_metrics/
 .researcher_backups/
+
+# Frontend build artifacts
+web/node_modules/
+web/.next/
+.env*.local
